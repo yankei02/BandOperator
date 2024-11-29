@@ -55,7 +55,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Author
 
 - **Enqi Lian**
-- [enqilian619@gmail.com](mailto:your.email@example.com)
+- [enqilian619@gmail.com](mailto:enqilian619@gmail.com)
 
 ## Acknowledgments
 
