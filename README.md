@@ -1,10 +1,10 @@
-# Exchange Band Audio Processor
+# FreqWeave
 
 An audio plugin that exchanges frequency bands between a main input and a sidechain input using FFT-based processing.
 
 ## Introduction
 
-The Exchange Band Audio Processor is a plugin designed for audio signal processing applications. It allows users to exchange specific frequency bands between a main audio signal and a sidechain signal. This can be used for creative sound design, mixing, or mastering purposes.
+FreqWeave is a plugin designed for audio signal processing applications. It allows users to exchange specific frequency bands between a main audio signal and a sidechain signal. This can be used for creative sound design, mixing, or mastering purposes.
 
 ## Features
 
