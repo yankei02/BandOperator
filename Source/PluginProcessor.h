@@ -9,7 +9,8 @@
 #pragma once
 
 #include <JuceHeader.h>
-
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <mutex>
 //==============================================================================
 /**
 */
@@ -58,23 +59,9 @@ public:
     juce::CriticalSection bufferLock;  // 用于保护缓冲区的线程安全
     bool isSidechainInputActive() const;//检查side chain是否激活
     
-    // 输入缓冲区
-    juce::AudioBuffer<float> inputFifo;
-    int inputFifoIndex = 0; // 当前缓冲了多少样本
-
-    // 侧链输入缓冲区
-    juce::AudioBuffer<float> sidechainInputFifo;
-    int sidechainInputFifoIndex = 0; // 侧链缓冲了多少样本
-
-    // 输出缓冲区
-    juce::AudioBuffer<float> outputFifo;
-    int outputFifoIndex = 0; // 当前输出缓冲区中可供输出的样本数
-    
-    float sampleRateOverFftSize = 0.0f;
-    
     // 用于存储窗函数数据
     std::vector<float> windowingTable;
-    std::unique_ptr<juce::dsp::WindowingFunction<float>> windowFunction;
+std::unique_ptr<juce::dsp::WindowingFunction<float>> windowFunction;
     
     //FFT相关数据
     static constexpr int fftOrder = 11; // FFT的阶数，2^11 = 2048点FFT
@@ -109,6 +96,9 @@ public:
     // 公共成员以访问ValueTreeState
     juce::AudioProcessorValueTreeState parameters;
     
+    std::vector<float> mainRingBuffer;  // 主链环形缓冲区
+    std::vector<float> sidechainRingBuffer;  // 侧链环形缓冲区
+
 
 private:
     //==============================================================================
@@ -117,10 +107,8 @@ private:
     // overlap-add buffer
     juce::AudioBuffer<float> overlapAddBuffer;
     int overlapWriteIndex = 0;
-    int hopSize = fftSize / 2; // 50% 重叠
     // 保护 FFT 数据的互斥锁
     juce::CriticalSection fftDataLock;
-
     // 频率向量
     std::vector<float> mainchainFrequency;
     std::vector<float> sidechainFrequency;
@@ -128,12 +116,24 @@ private:
     
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+//    // FFT 相关成员变量
+//    int fftOrder = 11;               // FFT 的阶数（log2大小）
+//    int fftSize = 2048;                // FFT 大小（2的幂次方）
+    int hopSize = fftSize / 2; // 50% 重叠
+    float sampleRateOverFftSize;
     // 辅助方法
-    void performFFT(const juce::AudioBuffer<float>& buffer, std::vector<float>& fftData, std::vector<float>& magnitude, std::vector<float>& phase, bool isMainchain);
+    void performFFT(float* inputData, std::vector<float>& magnitude, std::vector<float>& phase, bool isMainchain);
     void crossSynthesis();
     void performIFFT(juce::AudioBuffer<float>& buffer);
-    
-    
+    int mainRingBufferWriteIdx = 0;     // 主链环形缓冲区写入指针
+    int sidechainRingBufferWriteIdx = 0; // 侧链环形缓冲区写入指针
+    int ringBufferReadIdx = 0;          // 读取指针
+    const int bufferSize = 512;         // 每次处理的缓冲区大小
+    int mainSampleCount = 0;
+    int sidechainSampleCount = 0;
+    std::mutex vectorMutex;
     juce::NormalisableRange<float> createFrequencyRange();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ExchangeBandAudioProcessor)
 };
+
+

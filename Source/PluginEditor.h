@@ -14,7 +14,8 @@
 //==============================================================================
 /**
 */
-class ExchangeBandAudioProcessorEditor  : public juce::AudioProcessorEditor
+class ExchangeBandAudioProcessorEditor  : public juce::AudioProcessorEditor,
+                                   public juce::Slider::Listener 
 {
 public:
     ExchangeBandAudioProcessorEditor (ExchangeBandAudioProcessor&);
@@ -28,6 +29,7 @@ public:
     // 检查侧链输入是否激活
     // 实现 ChangeListener 的回调
     void changeListenerCallback(juce::ChangeBroadcaster* source) ;
+    void sliderValueChanged(juce::Slider* slider) override;
 
 private:
     // This reference is provided as a quick way for your editor to

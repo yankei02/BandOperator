@@ -79,8 +79,12 @@ ExchangeBandAudioProcessorEditor::ExchangeBandAudioProcessorEditor (ExchangeBand
 
     setupSlider(band1MixSlider, "Band1Mix?");
     setupSlider(band2MixSlider, "Band1Mix2");
-    
-
+    cutFrequencyFrom1Slider.addListener(this);  // 为 slider 添加监听器
+    cutFrequencyFrom2Slider.addListener(this);  // 为 slider 添加监听器
+    frequencyBandLengthSlider.addListener(this);  // 为 slider 添加监听器
+    exchangeBandOrNotSlider.addListener(this);  // 为 slider 添加监听器
+    band1MixSlider.addListener(this);  // 为 slider 添加监听器
+    band2MixSlider.addListener(this);  // 为 slider 添加监听器
     // 连接滑块到处理器参数
     cutFrequencyFrom1Attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             audioProcessor.parameters, "cutFrequencyFrom1", cutFrequencyFrom1Slider);
@@ -89,7 +93,7 @@ ExchangeBandAudioProcessorEditor::ExchangeBandAudioProcessorEditor (ExchangeBand
     frequencyBandLengthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             audioProcessor.parameters, "FrequencyBandLength", frequencyBandLengthSlider);
     exchangeBandOrNotAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-            audioProcessor.parameters, "ExchangeBandValue?", exchangeBandOrNotSlider);
+            audioProcessor.parameters, "ExchangeBandValue", exchangeBandOrNotSlider);
     
 
     band1MixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -175,6 +179,33 @@ ExchangeBandAudioProcessorEditor::~ExchangeBandAudioProcessorEditor()
 }
 
 //==============================================================================
+void ExchangeBandAudioProcessorEditor::sliderValueChanged(juce::Slider* slider)
+{
+    if (slider == &cutFrequencyFrom1Slider)
+    {
+        DBG("CutFrom?1 Slider Value: " << slider->getValue());  // 打印出 CutFrom?1 滑块的值
+    }
+    else if (slider == &cutFrequencyFrom2Slider)
+    {
+        DBG("CutFrom?2 Slider Value: " << slider->getValue());  // 打印出 CutFrom?2 滑块的值
+    }
+    else if (slider == &frequencyBandLengthSlider)
+    {
+        DBG("BandLength? Slider Value: " << slider->getValue());  // 打印出 BandLength 滑块的值
+    }
+    else if (slider == &exchangeBandOrNotSlider)
+    {
+        DBG("Exchange? Slider Value: " << slider->getValue());  // 打印出 Exchange 滑块的值
+    }
+    else if (slider == &band1MixSlider)
+    {
+        DBG("Band1Mix? Slider Value: " << slider->getValue());  // 打印出 Band1Mix 滑块的值
+    }
+    else if (slider == &band2MixSlider)
+    {
+        DBG("Band2Mix? Slider Value: " << slider->getValue());  // 打印出 Band2Mix 滑块的值
+    }
+}
 
 
 void ExchangeBandAudioProcessorEditor::paint (juce::Graphics& g)
