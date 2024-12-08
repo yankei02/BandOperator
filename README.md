@@ -1,7 +1,7 @@
 # FreqWeave
 
 An audio plugin that exchanges frequency bands between a main input and a sidechain input using FFT-based processing.
-
+A detailed technical report can be found [here](https://github.com/yankei02/FreqWeave/blob/main/TechnicalReport.pdf).
 ## Introduction
 
 FreqWeave is a plugin designed for audio signal processing applications. It allows users to exchange specific frequency bands between a main audio signal and a sidechain signal. This can be used for creative sound design, mixing, or mastering purposes.
