@@ -70,7 +70,8 @@ parameters (*this, nullptr, juce::Identifier ("Parameters"),
     
     mixedMagnitude2.resize(fftSize / 2 + 1);
     mixedPhase2.resize(fftSize / 2 + 1);
-
+    outMagnitude.resize(fftSize / 2 + 1);
+    outPhase.resize(fftSize / 2 + 1);
     outputFFTData.resize(fftSize, 0.0f); // 逆 FFT 存储 fftSize 个元素
     mainRingBuffer.resize(fftSize, 0.0f);
     sidechainRingBuffer.resize(fftSize, 0.0f);
@@ -249,7 +250,8 @@ void ExchangeBandAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     mixedPhase1.resize(fftSize / 2 + 1);
     mixedMagnitude2.resize(fftSize / 2 + 1);
     mixedPhase2.resize(fftSize / 2 + 1);
-    
+    outMagnitude.resize(fftSize / 2 + 1);
+    outPhase.resize(fftSize / 2 + 1);
     outputFFTData.resize(fftSize * 2, 0.0f);
     // 初始化 windowFunction 窗函数
     windowFunction = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, juce::dsp::WindowingFunction<float>::hann); // 使用 Hann 窗函数初始化
@@ -273,6 +275,8 @@ void ExchangeBandAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     // 如果采样率变化，需要重新初始化 FFT 或缓冲区
     jassert(fftSize == (1 << fftOrder));
     DBG("fftSize Changed");
+    int inputBusCount = getBusCount(true); // true 表示输入总线
+    DBG("Input Bus Count: " << inputBusCount); // 应该输出 2
 }
 
 void ExchangeBandAudioProcessor::releaseResources()
@@ -291,6 +295,9 @@ void ExchangeBandAudioProcessor::releaseResources()
     mixedMagnitude2.clear();
     mixedPhase2.clear();
     outputFFTData.clear();
+    outMagnitude.clear();
+    outPhase.clear();
+    
     printf("Release Sources");
 }
 
@@ -345,11 +352,12 @@ bool ExchangeBandAudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
 //检查sideChain input是否被激活
 bool ExchangeBandAudioProcessor::isSidechainInputActive() const
 {
+    // 假设侧链需要至少两个输入通道（一个主链，一个侧链）
     if (getTotalNumInputChannels() < 1) // 至少需要一个输入总线
-    {
-        DBG("No SidechainInput.");
-    }
-        return false;
+        {
+            DBG("No SidechainInput.");
+        }
+    return false;
 
     const juce::AudioProcessor::Bus* sidechainBus = getBus(true, 1); // 输入总线索引 1 为侧链
     if (sidechainBus)
@@ -783,6 +791,18 @@ void ExchangeBandAudioProcessor::crossSynthesis()
             }
         }
     }
+    outMagnitude = mainMagnitude;
+    outPhase = mainPhase;
+    for (int i = startBin1; i <= endBin1; ++i)
+    {
+        outMagnitude[i] = mixedMagnitude1[i];
+        outPhase[i] = mixedPhase1[i];
+    }
+    for (int i = startBin2; i <= endBin2; ++i)
+    {
+        outMagnitude[i] = mixedMagnitude2[i];
+        outPhase[i] = mixedPhase2[i];
+    }
 }
 
 
@@ -790,77 +810,103 @@ void ExchangeBandAudioProcessor::performIFFT(juce::AudioBuffer<float>& buffer)
 {
     std::lock_guard<std::mutex> lock(vectorMutex); // 确保线程安全
 
-    // 为每个通道单独处理
     for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
     {
-        // 清空输出频域数据，确保没有垃圾数据
+        // 1) 清空输出频域数据，确保没有垃圾数据
         std::fill(outputFFTData.begin(), outputFFTData.end(), 0.0f);
 
-        // 构建频域数据（实部和虚部）并存储到 outputFFTData
+        //===========================================================
+        // 2) 正频率部分 [0 ~ fftSize/2]
+        //    使用 outMagnitude[i]、outPhase[i]
+        //===========================================================
         for (int i = 0; i <= fftSize / 2; ++i)
         {
-            int index = 2 * i;
+            // 根据 outMagnitude/outPhase 来生成实部 & 虚部
+            float mag   = outMagnitude[i];
+            float ph    = outPhase[i];
+
+            int index   = 2 * i;
             jassert(index + 1 < outputFFTData.size());
 
-            // 使用 mixMagnitude 和 mixPhase 替代 mainMagnitude 和 mainPhase
-            float magnitude = (i < mixedMagnitude1.size()) ? mixedMagnitude1[i] : mainMagnitude[i];  // 用 mixMagnitude 替换 mainMagnitude
-            float phase = (i < mixedPhase1.size()) ? mixedPhase1[i] : mainPhase[i];  // 用 mixPhase 替换 mainPhase
-
-            // 计算正频率部分的实部和虚部
-            outputFFTData[index]     = magnitude * std::cos(phase);  // 使用修改后的幅度和相位
-            outputFFTData[index + 1] = magnitude * std::sin(phase);  // 使用修改后的幅度和相位
+            outputFFTData[index]     = mag * std::cos(ph);   // 实部
+            outputFFTData[index + 1] = mag * std::sin(ph);   // 虚部
         }
 
-
-        // 处理负频率部分
+        //===========================================================
+        // 3) 负频率部分 (1 ~ fftSize/2 - 1)，做“对称共轭”镜像
+        //    注：i=0 和 i=fftSize/2 这两个点都是实数，无需重复。
+        //===========================================================
         for (int i = 1; i < fftSize / 2; ++i)
         {
-            int index = 2 * (fftSize - i);
-            jassert(index + 1 < outputFFTData.size());
+            // 取出正频率的幅度和相位
+            float mag   = outMagnitude[i];
+            float ph    = outPhase[i];
 
-            // 使用 mixMagnitude 和 mixPhase 替代 mainMagnitude 和 mainPhase
-            float magnitude = (i < mixedMagnitude1.size()) ? mixedMagnitude1[i] : mainMagnitude[i];  // 用 mixMagnitude 替换 mainMagnitude
-            float phase = (i < mixedPhase1.size()) ? mixedPhase1[i] : mainPhase[i];  // 用 mixPhase 替换 mainPhase
+            // 负频率对应的索引
+            int conjIndex = 2 * (fftSize - i);
+            jassert(conjIndex + 1 < outputFFTData.size());
 
-            // 计算负频率部分的实部和虚部
-            outputFFTData[index]     = magnitude * std::cos(-phase);  // 使用修改后的幅度和相位
-            outputFFTData[index + 1] = magnitude * std::sin(-phase);  // 使用修改后的幅度和相位
+            // 负频率部分是正频率的共轭 -> e^{-j\theta} = cos(-θ) + i sin(-θ)
+            // 这里要注意一下：如果你后面还要手动再对 “虚部取负一次”，
+            // 那么这里你可以先写成 cos(ph), sin(ph)。具体看你的实现约定。
+            //
+            // 常规写法：cos(-θ) = cos(θ)，sin(-θ) = -sin(θ)
+            outputFFTData[conjIndex]     = mag * std::cos(-ph);  // = mag * cos(ph)
+            outputFFTData[conjIndex + 1] = mag * std::sin(-ph);  // = - (mag * sin(ph))
         }
 
-
-        // 确保 DC 和 Nyquist 频率的虚部为 0
-        outputFFTData[1] = 0.0f; // DC 虚部
+        //===========================================================
+        // 4) 确保 DC(0Hz) 和 Nyquist(fftSize/2) 频率的虚部为 0
+        //===========================================================
+        outputFFTData[1] = 0.0f;  // DC 的虚部
         outputFFTData[2 * (fftSize / 2) + 1] = 0.0f; // Nyquist 虚部
 
-        // 手动对虚部取负以实现共轭
+        //===========================================================
+        // 5) 手动对虚部取负，以实现共轭对称
+        //    这一步要根据你的 transform 实现而定。
+        //    绝大多数 JUCE 的例子中，performRealOnlyInverseTransform
+        //    往往需要先对所有虚部取负一次。
+        //===========================================================
         for (int i = 0; i < 2 * fftSize; i += 2)
         {
             outputFFTData[i + 1] = -outputFFTData[i + 1];
         }
 
-        // 执行逆FFT
+        //===========================================================
+        // 6) 执行逆 FFT ( 注意：与正变换不同的是调用函数名称或参数！ )
+        //    如果你这里用的是 performRealOnlyForwardTransform 做逆变换，
+        //    说明你的库/代码里把这个当作逆变换在使用，请确保理解一致。
+        //===========================================================
         fft.performRealOnlyForwardTransform(outputFFTData.data());
 
-        // 再次手动对虚部取负以完成逆 FFT
+        //===========================================================
+        // 7) 再次手动对虚部取负，以完成逆 FFT 的共轭操作
+        //===========================================================
         for (int i = 0; i < 2 * fftSize; i += 2)
         {
             outputFFTData[i + 1] = -outputFFTData[i + 1];
         }
 
-        // 归一化逆 FFT 结果
+        //===========================================================
+        // 8) 归一化 (ifft 通常要除以 fftSize)
+        //===========================================================
         for (int i = 0; i < fftSize; ++i)
         {
-            outputFFTData[i] /= fftSize;
+            outputFFTData[i] /= float(fftSize);
         }
 
-        // 将逆 FFT 结果拷贝到重叠相加缓冲区
+        //===========================================================
+        // 9) overlap-add（OLA）写入
+        //===========================================================
         overlapAddBuffer.addFrom(channel, overlapWriteIndex, outputFFTData.data(), fftSize);
     }
 
-    // 将重叠相加缓冲区的数据写回输出缓冲区
+    //===========================================================
+    // 10) 将 OLA 缓冲区数据写回输出音频缓冲区
+    //===========================================================
     for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
     {
-        float* outputBufferData = buffer.getWritePointer(channel);
+        float* outputBufferData  = buffer.getWritePointer(channel);
         const float* overlapData = overlapAddBuffer.getReadPointer(channel, overlapWriteIndex);
 
         for (int sample = 0; sample < fftSize; ++sample)
@@ -872,9 +918,12 @@ void ExchangeBandAudioProcessor::performIFFT(juce::AudioBuffer<float>& buffer)
         }
     }
 
-    // 更新重叠写入索引
+    //===========================================================
+    // 11) 更新重叠写入索引
+    //===========================================================
     overlapWriteIndex = (overlapWriteIndex + fftSize) % (2 * fftSize);
 }
+
 
 
 
@@ -925,4 +974,3 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new ExchangeBandAudioProcessor();
 }
-

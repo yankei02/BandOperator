@@ -88,7 +88,9 @@ std::unique_ptr<juce::dsp::WindowingFunction<float>> windowFunction;
     // 混合后的 FFT 结果-band2
     std::vector<float> mixedMagnitude2;
     std::vector<float> mixedPhase2;
-    
+    // 用于IFFT的buffer
+    std::vector<float> outMagnitude;
+    std::vector<float> outPhase;
     // 用于存储逆 FFT 的数据
     std::vector<float> outputFFTData;
     //std::vector<float> outputMagnitude;
