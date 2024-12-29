@@ -420,6 +420,10 @@ void ExchangeBandAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     if (isSidechainInputActive())
     {
         int mainNumChannels = getBus(true, 0)->getNumberOfChannels();
+        for (int channel = 0; channel < mainNumChannels; ++channel)
+        {
+            buffer.copyFrom(channel, 0, buffer.getReadPointer(channel), numSamples);
+        }
         int sidechainNumChannels = getBus(true, 1)->getNumberOfChannels();
         DBG("Main input channels: " << mainNumChannels);
         DBG("Sidechain input channels: " << sidechainNumChannels);
