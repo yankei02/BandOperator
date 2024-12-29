@@ -420,9 +420,9 @@ void ExchangeBandAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     if (isSidechainInputActive())
     {
         int mainNumChannels = getBus(true, 0)->getNumberOfChannels();
-        for (int channel = 0; channel < mainNumChannels; ++channel)
+        for (int ch = 0; ch < mainNumChannels; ++ch)
         {
-            buffer.copyFrom(channel, 0, buffer.getReadPointer(channel), numSamples);
+            buffer.copyFrom(ch, 0, buffer.getReadPointer(ch), numSamples);
         }
         int sidechainNumChannels = getBus(true, 1)->getNumberOfChannels();
         DBG("Main input channels: " << mainNumChannels);
@@ -610,59 +610,127 @@ void ExchangeBandAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
 //    }
 //}
 
+//void ExchangeBandAudioProcessor::crossSynthesis()
+//{
+//
+//    // 获取参数值
+//    float cutFrequencyFrom1 = parameters.getParameterAsValue("cutFrequencyFrom1").getValue();
+//    float cutFrequencyFrom2 = parameters.getParameterAsValue("cutFrequencyFrom2").getValue();
+//    float bandLength = parameters.getParameterAsValue("FrequencyBandLength").getValue();
+//    float exchangeBandValue = parameters.getParameterAsValue("ExchangeBandValue").getValue();
+//    float band1Mix = parameters.getParameterAsValue("band1Mix").getValue();
+//    float band2Mix = parameters.getParameterAsValue("band2Mix").getValue();
+//
+//    // 计算 bandLength 对应的频段宽度
+//    float bandWidth = juce::jmap(bandLength, 0.0f, 2.0f, 20.0f, 2000.0f); // 可以调整映射范围
+//    // 确保频段宽度在合理范围内
+//    bandWidth = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, bandWidth);
+//
+//    // 确保 cutFrequency 在合理范围内
+//    cutFrequencyFrom1 = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, cutFrequencyFrom1);
+//    cutFrequencyFrom2 = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, cutFrequencyFrom2);
+//
+//    // 计算中心 bin 索引
+//    int centerBin1 = static_cast<int>(cutFrequencyFrom1 * fftSize / static_cast<float>(sampleRate));
+//    int centerBin2 = static_cast<int>(cutFrequencyFrom2 * fftSize / static_cast<float>(sampleRate));
+//
+//    // 计算半带宽对应的 bin 数
+//    int halfBandBins1 = static_cast<int>((bandWidth / 2.0f) * fftSize / static_cast<float>(sampleRate));
+//    int halfBandBins2 = static_cast<int>((bandWidth / 2.0f) * fftSize / static_cast<float>(sampleRate));
+//
+//    // 确保半带宽至少为 1
+//    halfBandBins1 = std::max(1, halfBandBins1);
+//    halfBandBins2 = std::max(1, halfBandBins2);
+//
+//    // 计算索引范围
+//    int startBin1 = juce::jmax(0, centerBin1 - halfBandBins1);
+//    int endBin1 = juce::jmin(fftSize / 2, centerBin1 + halfBandBins1);
+//
+//    int startBin2 = juce::jmax(0, centerBin2 - halfBandBins2);
+//    int endBin2 = juce::jmin(fftSize / 2, centerBin2 + halfBandBins2);///test2
+//
+//
+//    // 添加断言以确保索引合法
+//    jassert(startBin1 >= 0 && startBin1 <= fftSize / 2);
+//    jassert(endBin1 >= 0 && endBin1 <= fftSize / 2);
+//    jassert(startBin2 >= 0 && startBin2 <= fftSize / 2);
+//    jassert(endBin2 >= 0 && endBin2 <= fftSize / 2);
+//    DBG("startBinAndEndBinGreat");
+//
+//    // 初始化混合后的幅度和相位为主链和侧链的原始值
+//    mixedMagnitude1 = mainMagnitude;
+//    mixedPhase1 = mainPhase;
+//    mixedMagnitude2 = sidechainMagnitude;
+//    mixedPhase2 = sidechainPhase;
 void ExchangeBandAudioProcessor::crossSynthesis()
 {
+    // 1) 获取参数值
+    float cutFrequencyFrom1  = parameters.getParameterAsValue("cutFrequencyFrom1").getValue();
+    float cutFrequencyFrom2  = parameters.getParameterAsValue("cutFrequencyFrom2").getValue();
+    float bandLength         = parameters.getParameterAsValue("FrequencyBandLength").getValue();
+    float exchangeBandValue  = parameters.getParameterAsValue("ExchangeBandValue").getValue();
+    float band1Mix           = parameters.getParameterAsValue("band1Mix").getValue();
+    float band2Mix           = parameters.getParameterAsValue("band2Mix").getValue();
 
-    // 获取参数值
-    float cutFrequencyFrom1 = parameters.getParameterAsValue("cutFrequencyFrom1").getValue();
-    float cutFrequencyFrom2 = parameters.getParameterAsValue("cutFrequencyFrom2").getValue();
-    float bandLength = parameters.getParameterAsValue("FrequencyBandLength").getValue();
-    float exchangeBandValue = parameters.getParameterAsValue("ExchangeBandValue").getValue();
-    float band1Mix = parameters.getParameterAsValue("band1Mix").getValue();
-    float band2Mix = parameters.getParameterAsValue("band2Mix").getValue();
+    // 2) 根据 bandLength 计算出实际带宽 bandWidth
+    //    下面这一行是你原先的映射，根据需要可自行修改数值范围
+    float bandWidth = juce::jmap(bandLength, 0.0f, 2.0f, 20.0f, 2000.0f);
 
-    // 计算 bandLength 对应的频段宽度
-    float bandWidth = juce::jmap(bandLength, 0.0f, 2.0f, 20.0f, 2000.0f); // 可以调整映射范围
-
-    // 确保频段宽度在合理范围内
+    // 3) 可选：再对 bandWidth 做一个基本的限幅，别小于 20Hz 或超过 Nyquist
     bandWidth = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, bandWidth);
+    // 4) 计算半带宽 halfBW
+    float halfBW = bandWidth * 0.5f;
 
-    // 确保 cutFrequency 在合理范围内
-    cutFrequencyFrom1 = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, cutFrequencyFrom1);
-    cutFrequencyFrom2 = juce::jlimit(20.0f, static_cast<float>(sampleRate) / 2.0f, cutFrequencyFrom2);
+    // 5) 为了保证不会越界，先设定中心频率的合法范围
+    //    这样在后面计算 centerBin ± halfBandBins 时就不会触发边界裁剪
+    float minCenterFreq = halfBW;
+    float maxCenterFreq = (sampleRate * 0.5f) - halfBW;
 
-    // 计算中心 bin 索引
-    int centerBin1 = static_cast<int>(cutFrequencyFrom1 * fftSize / static_cast<float>(sampleRate));
-    int centerBin2 = static_cast<int>(cutFrequencyFrom2 * fftSize / static_cast<float>(sampleRate));
+    // 6) 把用户/算法得到的 cutFrequency clamping 到安全范围
+    cutFrequencyFrom1 = juce::jlimit(minCenterFreq, maxCenterFreq, cutFrequencyFrom1);
+    cutFrequencyFrom2 = juce::jlimit(minCenterFreq, maxCenterFreq, cutFrequencyFrom2);
 
-    // 计算半带宽对应的 bin 数
-    int halfBandBins1 = static_cast<int>((bandWidth / 2.0f) * fftSize / static_cast<float>(sampleRate));
-    int halfBandBins2 = static_cast<int>((bandWidth / 2.0f) * fftSize / static_cast<float>(sampleRate));
+    // ========== 下面的逻辑就跟以往大同小异，只是注意这时不用再 clamp 20.0f ~ (sampleRate/2.0f) ==========
 
-    // 确保半带宽至少为 1
-    halfBandBins1 = std::max(1, halfBandBins1);
-    halfBandBins2 = std::max(1, halfBandBins2);
+    // 7) 计算中心 bin 索引
+    int centerBin1 = static_cast<int>(cutFrequencyFrom1 * fftSize / sampleRate);
+    int centerBin2 = static_cast<int>(cutFrequencyFrom2 * fftSize / sampleRate);
 
-    // 计算索引范围
-    int startBin1 = juce::jmax(0, centerBin1 - halfBandBins1);
-    int endBin1 = juce::jmin(fftSize / 2, centerBin1 + halfBandBins1);
+    // 8) 根据 bandWidth -> halfBW -> 转成 bin 数
+    int halfBandBins = static_cast<int>( (halfBW) * fftSize / sampleRate );
+    // 如果你仍然想保证至少1个bin，就这样
+    halfBandBins = std::max(1, halfBandBins);
 
-    int startBin2 = juce::jmax(0, centerBin2 - halfBandBins2);
-    int endBin2 = juce::jmin(fftSize / 2, centerBin2 + halfBandBins2);
+    // 注意：如果两个频段都用同样的 bandWidth，就只需要一个 halfBandBins，
+    // 无论是1还是2，值都会一样，这样两个频段才会相同。
+    // 如果你用相同 bandWidth，那 halfBandBins1 == halfBandBins2，
+    // 这里演示就写成一个 halfBandBins 即可，省去重复代码。
 
-    // 添加断言以确保索引合法
+    // 9) 计算 startBin/endBin（这里保留 jmax / jmin 也无妨，
+    //    因为通过前面的 clamp，这里基本不会再被“截掉”了）
+    int startBin1 = juce::jmax(0, centerBin1 - halfBandBins);
+    int endBin1   = juce::jmin(fftSize / 2, centerBin1 + halfBandBins);
+
+    int startBin2 = juce::jmax(0, centerBin2 - halfBandBins);
+    int endBin2   = juce::jmin(fftSize / 2, centerBin2 + halfBandBins);
+
+    // 10) 断言检查，确认不会越界
     jassert(startBin1 >= 0 && startBin1 <= fftSize / 2);
-    jassert(endBin1 >= 0 && endBin1 <= fftSize / 2);
+    jassert(endBin1   >= 0 && endBin1   <= fftSize / 2);
     jassert(startBin2 >= 0 && startBin2 <= fftSize / 2);
-    jassert(endBin2 >= 0 && endBin2 <= fftSize / 2);
+    jassert(endBin2   >= 0 && endBin2   <= fftSize / 2);
     DBG("startBinAndEndBinGreat");
-    
-    // 初始化混合后的幅度和相位为主链和侧链的原始值
-    mixedMagnitude1 = mainMagnitude;
-    mixedPhase1 = mainPhase;
-    mixedMagnitude2 = sidechainMagnitude;
-    mixedPhase2 = sidechainPhase;
 
+    // 11) 如果你想直接查看两个band的长度是否一致，可以 dbg一下:
+    int len1 = endBin1 - startBin1 + 1;
+    int len2 = endBin2 - startBin2 + 1;
+    DBG("band1 bin length: " << len1 << ", band2 bin length: " << len2);
+
+    // 12) 初始化混合后的幅度和相位
+    mixedMagnitude1 = mainMagnitude;
+    mixedPhase1     = mainPhase;
+    mixedMagnitude2 = sidechainMagnitude;
+    mixedPhase2     = sidechainPhase;
     // 在 band1 频段内混合主链和侧链
     for (int i = startBin1; i <= endBin1; ++i)
     {
@@ -856,4 +924,5 @@ void ExchangeBandAudioProcessor::setStateInformation (const void* data, int size
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new ExchangeBandAudioProcessor();
-} 
+}
+
