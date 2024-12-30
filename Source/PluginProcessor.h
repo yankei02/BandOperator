@@ -100,7 +100,9 @@ std::unique_ptr<juce::dsp::WindowingFunction<float>> windowFunction;
     
     std::vector<float> mainRingBuffer;  // 主链环形缓冲区
     std::vector<float> sidechainRingBuffer;  // 侧链环形缓冲区
-
+    // 封装的环形缓冲区读取函数
+    float readMainRingBuffer(int i) const;
+    float readSidechainRingBuffer(int i) const;
 
 private:
     //==============================================================================
@@ -134,6 +136,7 @@ private:
     int mainSampleCount = 0;
     int sidechainSampleCount = 0;
     std::mutex vectorMutex;
+    void adjustSidechainToStereo(juce::AudioBuffer<float>& buffer, int mainNumChannels);
     juce::NormalisableRange<float> createFrequencyRange();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ExchangeBandAudioProcessor)
 };
